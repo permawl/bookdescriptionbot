@@ -4,12 +4,13 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
+import os
 
 # Enable logging (helps see errors if something goes wrong)
 logging.basicConfig(level=logging.INFO)
 
 # 🔑 Replace with your own Telegram bot token from @BotFather
-BOT_TOKEN = "7866345321:AAH_7kYB2oAt1DQADYnHYUZYIA52Od3PcMI"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
