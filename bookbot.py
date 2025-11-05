@@ -9,7 +9,6 @@ import os
 # Enable logging (helps see errors if something goes wrong)
 logging.basicConfig(level=logging.INFO)
 
-# 🔑 Replace with your own Telegram bot token from @BotFather
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -17,47 +16,56 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please provide a book name, e.g. /book The Blade Itself")
         return
 
-    query = " ".join(context.args)
-    search_url = f"https://www.goodreads.com/search?q={quote_plus(query)}"
+    book_name = " ".join(context.args)
+    search_query = quote_plus(f"site:goodreads.com {book_name}")
+    google_url = f"https://www.google.com/search?q={search_query}"
+
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
     try:
-        # Step 1: Search Goodreads for the book
-        resp = requests.get(search_url, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
+        # Step 1: Find Goodreads link via Google
+        res = requests.get(google_url, headers=headers, timeout=10)
+        soup = BeautifulSoup(res.text, "html.parser")
 
-        first_result = soup.select_one("a.bookTitle")
-        if not first_result:
-            await update.message.reply_text("No results found.")
+        link_tag = None
+        for a in soup.find_all("a", href=True):
+            if "goodreads.com/book/show" in a["href"]:
+                link_tag = a
+                break
+
+        if not link_tag:
+            await update.message.reply_text("No Goodreads page found for that book.")
             return
 
-        book_url = "https://www.goodreads.com" + first_result["href"]
+        start = link_tag["href"].find("https://www.goodreads.com/book/show")
+        end = link_tag["href"].find("&", start)
+        book_url = link_tag["href"][start:end] if end != -1 else link_tag["href"][start:]
 
-        # Step 2: Fetch the book page itself
-        book_page = requests.get(book_url, timeout=10)
-        page_soup = BeautifulSoup(book_page.text, "html.parser")
+        # Step 2: Fetch Goodreads page
+        gr_page = requests.get(book_url, headers=headers, timeout=10)
+        gr_soup = BeautifulSoup(gr_page.text, "html.parser")
 
-        # Step 3: Extract title and full description
-        title_tag = page_soup.select_one("h1#bookTitle")
-        desc_tags = page_soup.select("div#description span")
+        # Step 3: Extract title, author, rating, and description
+        title_tag = gr_soup.select_one("h1.Text.Text__title1")
+        author_tag = gr_soup.select_one("span.ContributorLink__name")
+        rating_tag = gr_soup.select_one("div.RatingStatistics__rating")
+        desc_tag = gr_soup.select_one("span.Formatted, div#description span")
 
-        if not title_tag:
-            await update.message.reply_text("Couldn't extract book info.")
-            return
+        title = title_tag.get_text(strip=True) if title_tag else book_name
+        author = author_tag.get_text(strip=True) if author_tag else "Unknown author"
+        rating = rating_tag.get_text(strip=True) if rating_tag else "N/A"
+        description = desc_tag.get_text(strip=True) if desc_tag else "No description available."
 
-        title = title_tag.get_text(strip=True)
-
-        if desc_tags:
-            # Goodreads usually hides full description in the *last* span
-            description = desc_tags[-1].get_text(strip=True)
-        else:
-            description = "No description available."
-
-        # Optional: limit extremely long text
+        # Optional: trim very long descriptions
         if len(description) > 1200:
             description = description[:1200].rsplit(" ", 1)[0] + "..."
 
-        # Step 4: Format and send the message
-        text = f"📖 *{title}*\n{book_url}\n\n_{description}_"
+        # Step 4: Format message
+        text = (
+            f"📖 *{title}*\n👤 _{author}_\n⭐ {rating}\n\n"
+            f"{description}\n\n🔗 {book_url}"
+        )
+
         await update.message.reply_text(text, parse_mode="Markdown")
 
     except Exception as e:
