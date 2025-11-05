@@ -41,20 +41,21 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res = requests.get(google_url, headers=headers, timeout=10)
         soup = BeautifulSoup(res.text, "html.parser")
 
-        link_tag = None
+        book_url = None
         for a in soup.find_all("a", href=True):
-            if "goodreads.com/book/show" in a["href"]:
-                link_tag = a
-                break
+            href = a["href"]
+            # Google links start with /url?q=https://...
+            if href.startswith("/url?q=") and "goodreads.com/book/show" in href:
+                href = href.split("/url?q=")[1].split("&")[0]
+                if href.startswith("https://www.goodreads.com/book/show"):
+                    book_url = href
+                    break
 
-        if not link_tag:
+        if not book_url:
             await update.message.reply_text("No Goodreads page found for that book.")
             logging.warning("No Goodreads link found in Google search results.")
             return
 
-        start = link_tag["href"].find("https://www.goodreads.com/book/show")
-        end = link_tag["href"].find("&", start)
-        book_url = link_tag["href"][start:end] if end != -1 else link_tag["href"][start:]
         logging.info(f"Found Goodreads URL: {book_url}")
 
         # Step 2: Fetch Goodreads page
@@ -74,8 +75,6 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
             gr_soup.select_one("div.RatingStatistics__rating")
             or gr_soup.select_one("span[itemprop='ratingValue']")
         )
-
-        # description may be hidden in different tags
         desc_tag = (
             gr_soup.select_one("div[data-testid='description'] span")
             or gr_soup.select_one("div#description span:nth-of-type(2)")
@@ -87,18 +86,13 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rating = rating_tag.get_text(strip=True) if rating_tag else "N/A"
         description = desc_tag.get_text(strip=True) if desc_tag else "No description available."
 
-        # Optional: trim long descriptions
         if len(description) > 1200:
             description = description[:1200].rsplit(" ", 1)[0] + "..."
 
-        # Step 4: Format message
         text = (
             f"📖 *{title}*\n👤 _{author}_\n⭐ {rating}\n\n"
             f"{description}\n\n🔗 {book_url}"
         )
-
-        if not text.strip():
-            raise ValueError("Empty text being sent to Telegram!")
 
         await update.message.reply_text(text, parse_mode="Markdown")
 
