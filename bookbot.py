@@ -1,10 +1,17 @@
 import logging
+import sys
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 import os
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 
 # Enable logging (helps see errors if something goes wrong)
 logging.basicConfig(level=logging.INFO)
