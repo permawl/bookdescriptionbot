@@ -1,5 +1,6 @@
 import logging
 import requests
+import os
 from bs4 import BeautifulSoup
 import urllib.parse
 from telegram import Update
@@ -11,8 +12,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Replace with your bot token
-BOT_TOKEN = "7866345321:AAH_7kYB2oAt1DQADYnHYUZYIA52Od3PcMI"
+# Get bot token from environment variable (secure way)
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 # Function to search Goodreads and return the first book link
 def find_goodreads_link(book_title):
@@ -50,7 +51,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Book search command
 async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("UsageId: /book <book title>")
+        await update.message.reply_text("Usage: /book <book title>")
         return
 
     title = " ".join(context.args)
@@ -68,10 +69,15 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Main function
 if __name__ == '__main__':
+    if not BOT_TOKEN:
+        print("❌ Error: TELEGRAM_BOT_TOKEN environment variable not set!")
+        print("Please set it with: export TELEGRAM_BOT_TOKEN='your_token_here'")
+        exit(1)
+        
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("book", book))
 
-    print("Bot is running...")
+    print("✅ Bot is running...")
     app.run_polling()
