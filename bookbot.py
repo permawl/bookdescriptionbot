@@ -15,7 +15,7 @@ logging.basicConfig(
 # Get bot token from environment variable (secure way)
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# Function to search Goodreads and return the first book link
+# Function to search Goodreads and return the first book link + description
 def find_goodreads_link(book_title):
     query = urllib.parse.quote(book_title)
     url = f"https://www.goodreads.com/search?q={query}"
@@ -28,8 +28,8 @@ def find_goodreads_link(book_title):
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
     except Exception as e:
-        print(f"Error fetching Goodreads: {e}")
-        return None
+        print(f"Error fetching Goodreads search: {e}")
+        return None, None
 
     soup = BeautifulSoup(response.text, 'html.parser')
     
@@ -37,9 +37,38 @@ def find_goodreads_link(book_title):
     result = soup.find("a", class_="bookTitle")
     if result and result.get('href'):
         book_path = result['href']
-        return f"https://www.goodreads.com{book_path}"
-
-    return None
+        book_url = f"https://www.goodreads.com{book_path}"
+        
+        # Now fetch the book page to get description
+        try:
+            book_response = requests.get(book_url, headers=headers, timeout=10)
+            book_response.raise_for_status()
+            book_soup = BeautifulSoup(book_response.text, 'html.parser')
+            
+            # Extract description
+            description_div = book_soup.find("div", class_="BookPageMetadataSection__description")
+            if not description_div:
+                # Try alternative selector
+                description_div = book_soup.find("div", class_="description")
+            
+            description = "No description available."
+            if description_div:
+                # Get text and clean it up
+                description_text = description_div.get_text(strip=True)
+                if description_text:
+                    # Limit description length for Telegram
+                    if len(description_text) > 800:
+                        description = description_text[:800] + "..."
+                    else:
+                        description = description_text
+            
+            return book_url, description
+            
+        except Exception as e:
+            print(f"Error fetching book page: {e}")
+            return book_url, "Could not load description."
+    
+    return None, None
 
 # Start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -57,12 +86,21 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
     title = " ".join(context.args)
     await update.message.reply_text(f"🔍 Searching Goodreads for *{title}*...", parse_mode='Markdown')
 
-    link = find_goodreads_link(title)
+    link, description = find_goodreads_link(title)
 
     if link:
+        # Format the response with description
+        response_text = f"✅ Found on Goodreads!\n\n"
+        response_text += f"📘 {link}\n\n"
+        if description and description != "No description available." and description != "Could not load description.":
+            response_text += f"📖 *Description:*\n_{description}_"
+        elif description:
+            response_text += f"_{description}_"
+        
         await update.message.reply_text(
-            f"✅ Found on Goodreads!\n\n📘 {link}",
-            disable_web_page_preview=False
+            response_text,
+            disable_web_page_preview=False,
+            parse_mode='Markdown'
         )
     else:
         await update.message.reply_text("❌ Could not find the book on Goodreads.")
